@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bot WhatsApp Web</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  </head>
+  <body>
+    <h1>Bot WhatsApp</h1>
+
+    <div>
+      <h2>Status: <span id="status">Aguardando...</span></h2>
+    </div>
+
+    <div>
+      <h2>Escaneie o QR Code:</h2>
+      <div id="qr"></div>
+    </div>
+
+    <hr />
+    <h2>Enviar mensagem para grupos</h2>
+    <textarea
+      id="msg"
+      rows="5"
+      cols="50"
+      placeholder="Digite a mensagem"
+    ></textarea>
+    <br /><br />
+    <label>Escolha uma imagem:</label>
+    <input type="file" id="img" accept="image/*" />
+    <h2>Selecione os grupos:</h2>
+    <div id="groups"></div>
+    <br />
+    <button onclick="send()">Enviar</button>
+
+    <script>
+      const socket = io();
+      const qrDiv = document.getElementById("qr");
+      const statusSpan = document.getElementById("status");
+
+      // Recebe QR do servidor e mostra no site
+      socket.on("qr", (qr) => {
+        QRCode.toDataURL(qr, { width: 250 }, function (err, url) {
+          if (err) console.error(err);
+          qrDiv.innerHTML = `<img src="${url}" />`;
+          statusSpan.textContent = "Escaneie o QR code para conectar!";
+        });
+      });
+
+      // Atualiza status
+      socket.on("status", (msg) => {
+        statusSpan.textContent = msg;
+      });
+
+      // Só carrega grupos quando o client estiver pronto
+      socket.on("ready", () => {
+        statusSpan.textContent = "Bot conectado!";
+        loadGroups();
+      });
+
+      socket.on("authenticated", () => {
+        statusSpan.textContent = "Autenticado! Aguardando pronto...";
+      });
+
+      // Carrega grupos
+      async function loadGroups() {
+        const res = await fetch("/get-groups");
+        const data = await res.json();
+        const container = document.getElementById("groups");
+        container.innerHTML = "";
+
+        if (!data.groups || data.groups.length === 0) {
+          container.innerHTML = "<p>Nenhum grupo encontrado.</p>";
+          return;
+        }
+
+        data.groups.forEach((g) => {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.value = g.id;
+          checkbox.id = g.id;
+
+          const label = document.createElement("label");
+          label.htmlFor = g.id;
+          label.textContent = g.name;
+
+          container.appendChild(checkbox);
+          container.appendChild(label);
+          container.appendChild(document.createElement("br"));
+        });
+      }
+
+      // Enviar mensagem + imagem
+      async function send() {
+        const checked = Array.from(
+          document.querySelectorAll("#groups input:checked")
+        ).map((cb) => cb.value);
+        const msg = document.getElementById("msg").value;
+        const imgFile = document.getElementById("img").files[0];
+
+        if (!msg && !imgFile) {
+          alert("Digite a mensagem ou selecione uma imagem!");
+          return;
+        }
+        if (checked.length === 0) {
+          alert("Selecione pelo menos um grupo!");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("message", msg);
+        formData.append("targets", JSON.stringify(checked));
+        if (imgFile) formData.append("image", imgFile);
+
+        await fetch("/send", {
+          method: "POST",
+          body: formData,
+        });
+
+        alert("Mensagem enviada!");
+      }
+    </script>
+  </body>
+</html>
