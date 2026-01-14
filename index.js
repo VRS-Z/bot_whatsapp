@@ -5,6 +5,10 @@ const fs = require("fs");
 const http = require("http");
 const { Server } = require("socket.io");
 
+// Garante pastas necessárias no Render
+if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
+if (!fs.existsSync("public")) fs.mkdirSync("public");
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -21,7 +25,8 @@ function initClient() {
   client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-      headless: true, // rodando totalmente web
+      headless: true,
+      executablePath: "/usr/bin/google-chrome",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -32,9 +37,6 @@ function initClient() {
     restartOnAuthFail: true,
   });
 
-  // =====================
-  // Eventos do WhatsApp
-  // =====================
   client.on("qr", (qr) => {
     console.log("QR Code gerado");
     io.emit("qr", qr);
@@ -44,7 +46,7 @@ function initClient() {
   client.on("ready", () => {
     console.log("Bot pronto!");
     io.emit("status", "Bot conectado!");
-    io.emit("ready"); // frontend pode carregar grupos agora
+    io.emit("ready");
   });
 
   client.on("authenticated", () => {
@@ -73,7 +75,6 @@ function initClient() {
   });
 }
 
-// Inicializa client pela primeira vez
 initClient();
 
 // =====================
@@ -81,7 +82,6 @@ initClient();
 // =====================
 app.get("/get-groups", async (req, res) => {
   try {
-    // só permite buscar grupos se o bot estiver pronto
     if (!client.info || !client.info.pushname) {
       return res.status(400).json({ error: "Bot não está pronto ainda" });
     }
@@ -123,7 +123,7 @@ app.post("/send", upload.single("image"), async (req, res) => {
       }
 
       console.log("Mensagem enviada para:", chat.name);
-      await new Promise((r) => setTimeout(r, 15000)); // evita bloqueio
+      await new Promise((r) => setTimeout(r, 15000));
     } catch (err) {
       console.error("Erro enviando para:", targetId, err);
     }
@@ -137,9 +137,7 @@ app.post("/send", upload.single("image"), async (req, res) => {
 // Inicia servidor
 // =====================
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () =>
-  console.log(`Servidor rodando em http://localhost:${PORT}`)
-);
+server.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
 
 // =====================
 // Captura erros globais
@@ -148,6 +146,6 @@ process.on("uncaughtException", (err) => {
   console.error("Erro não capturado:", err);
 });
 
-process.on("unhandledRejection", (reason, promise) => {
+process.on("unhandledRejection", (reason) => {
   console.error("Promise rejeitada não tratada:", reason);
 });
